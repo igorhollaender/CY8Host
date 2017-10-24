@@ -69,12 +69,15 @@ import win32com.client
 import array
 
 import PPCOM
+from PPCOM import enumI2Cspeed
 from PPCOM import enumInterfaces
 from PPCOM import enumFrequencies
 from PPCOM import enumSonosArrays
 
 import tkinter as tk
 import tkinter.scrolledtext as tkst
+
+import time
 
 
 #********************************************************************************
@@ -137,12 +140,26 @@ class MyGUI(tk.Frame):
         menuBar.add_cascade(
             label       =   "Programmer", 
             menu        =   programmerMenu
-            )        
-                    
+            )                           
         programmerMenu.add_command(
-            label       =   "Execute", 
+            label       =   "Program", 
             command     =   self.Programmer_Execute
             )        
+        programmerMenu.add_command(
+            label       =   "Cycle power", 
+            command     =   self.programmer.CyclePower
+            )                    
+            
+        dataMenu = tk.Menu(menuBar)        
+        menuBar.add_cascade(
+            label       =   "Data", 
+            menu        =   dataMenu
+            )        
+                    
+        dataMenu.add_command(
+            label       =   "Read 4 bytes", 
+            command     =   self.programmer.ReadData
+            )                    
                                             
         # canvas    
         self.canvas = tk.Canvas(
@@ -164,6 +181,7 @@ class MyGUI(tk.Frame):
     # miscellaneous
     def PrintToConsole(self,text):
         self.consoleOutput.insert(tk.END,text+'\n')
+        self.consoleOutput.see(tk.END)
         self.consoleOutput.update_idletasks()
         
     def Programmer_Execute(self):
@@ -552,9 +570,124 @@ class CypressProgrammer:
         # hr = self.UpgradeBlock()
         self.ClosePort()
         return hr
+        
+    def CyclePower(self):
+        myPrint ("power off")                    
+        self.pp.PowerOff()
+        time.sleep(0.5) 
+        self.pp.PowerOn()
+        myPrint ("power on")                    
+        
+    
+    def ReadData(self):
+        # Open Port - get last (connected) port in the ports list
+        hr = self.ClosePort()
+        hr = self.OpenPort()
+        if (not self.SUCCEEDED(hr)): 
+            myPrint ("open port failed")                    
+            return hr
 
+        #hr = self.InitializePort()
+        #if (not self.SUCCEEDED(hr)): 
+        #    myPrint ("init failed")                    
+        #    return hr
+
+        # Set Acquire Mode
+        #self.pp.SetAcquireMode("Reset")
+
+        #Acquire Device
+        #hResult = self.pp.DAP_Acquire()
+        #hr = hResult[0]
+        #self.m_sLastError = hResult[1]
+        #if (not self.SUCCEEDED(hr)): 
+        #    myPrint ("acquire failed: %s"%self.m_sLastError)                    
+        #    return hr                    
+            
+        hResult = self.pp.SetPowerVoltage("3.3")
+        self.pp.PowerOn()
+        
+        #Set protocol
+        hResult = self.pp.SetProtocol(enumInterfaces.I2C)
+        hr = hResult[0]
+        self.m_sLastError = hResult[1]
+        if (not self.SUCCEEDED(hr)): 
+            myPrint ("set protocol failed: %s"%self.m_sLastError)                    
+            return hr
+                        
+        #Reset bus
+        hResult = self.pp.I2C_ResetBus()
+        hr = hResult[0]
+        self.m_sLastError = hResult[1]
+        if (not self.SUCCEEDED(hr)): 
+            myPrint ("reset bus failed: %s"%self.m_sLastError)                    
+            return hr
+                
+        #Set I2C speed
+        hResult = self.pp.I2C_SetSpeed(enumI2Cspeed.CLK_400K)
+        hr = hResult[0]
+        self.m_sLastError = hResult[1]
+        if (not self.SUCCEEDED(hr)): 
+            myPrint ("set speed failed: %s"%self.m_sLastError)                                
+            return hr       
+            
+        #Get I2C speed
+        hResult = self.pp.I2C_GetSpeed()
+        hr = hResult[0]
+        speed = hResult[1]
+        self.m_sLastError = hResult[2]    
+        val = ""
+        if (not self.SUCCEEDED(hr)): 
+            myPrint ("get speed failed: %s"%self.m_sLastError)                                
+            return hr
+        if (speed == 1): val = "100K"
+        elif (speed == 4): val = "50K"
+        elif (speed == 2): val = "400K"
+        myPrint ("Get speed: " + val + "!")                        
+        
+        #Get device list
+        hResult = self.pp.I2C_GetDeviceList()
+        hr = hResult[0]
+        devices = hResult[1]
+        self.m_sLastError = hResult[2]
+        if (not self.SUCCEEDED(hr)):
+                myPrint ("Failed to enumerate I2C devices: %s"%self.m_sLastError)
+                return hr
+        size = len(devices)
+        #Show devices
+        if (size == 0):
+              myPrint("No devices found")
+              return hr
+        myPrint ("Devices list:  8bit  7bit")
+        for i in range(0, size):
+                myPrint ("     address:  " + dec2hex(devices[i]<< 1) + "    " + dec2hex(devices[i]))
+                            
+        hResult = self.pp.I2C_ReadData(devices[0],48)
+        hr = hResult[0]
+        readData = hResult[1]
+        self.m_sLastError = hResult[2]
+        if (not self.SUCCEEDED(hr)): 
+            myPrint ("read failed: %s"%self.m_sLastError)                                           
+            return hr
+        
+        for i in range(0, len(readData)):  
+            myPrint ("Read from address 0x%x  : 0x%x" %(i,readData[i]))                    
+        
+        #Release PSoC4 chip
+        hResult = self.pp.DAP_ReleaseChip()
+        hr = hResult[0]
+        self.m_sLastError = hResult[1]
+        if (not self.SUCCEEDED(hr)): 
+            myPrint ("release failed: %s"%self.m_sLastError)                                               
+            return hr
+        
+        return hr
+        
+          
+   
       
 #********************************************************************************
+def dec2hex(n):
+        return "%X" % n
 
 def myPrint(text):
    global myGUI
@@ -562,7 +695,7 @@ def myPrint(text):
       
 #********************************************************************************
 
-version = "171014a"
+version = "171024a"
 
 cypressProgrammer = CypressProgrammer(hexFileToProgram="C:\\IH_CapGauge02.hex") 
 #IH171023 for some reason this must reside in root
