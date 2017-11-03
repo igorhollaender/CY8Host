@@ -3,7 +3,7 @@
 #	L i q u i d L e v e l G a u g e _  P C w i n a p p . p y 
 #
 #
-#	Last revision: 171025 IH
+#	Last revision: 171103 IH
 #
 #*******************************************************************************
 # 	Adapted from Python_Ex.py included in Cypress distribution 
@@ -173,24 +173,37 @@ class MyGUI(tk.Frame):
             label       =   "Read 40 bytes", 
             command     =   DemoReadData
             )                    
-                                            
-        # canvas    
+                         
         self.canvas = tk.Canvas(
             )
         self.canvas.pack(
-            fill        ='both',
+            fill        =   'both',
             expand      =   True
             )            
-            
-        #IH171024 for debugging only  
-        self.canvas.create_rectangle(30, 10, 120, 80, 
-            outline="#fb0", fill="#fb0")
+        
+        self.wellObjectList = []
+        for w in range(0,7):
+            wellObject = {
+                'wellNumber'      : w,
+                'canvasObject'    : WellModel(
+                    self.canvas,    
+                    "WELL"+str(w),
+                    50*w+100,200,
+                    text = str(w)
+                    ),
+                }
+            self.wellObjectList.append(wellObject)
+ 
+        
+    def setLiquidLevelRelative(self,wellNumber,liquidLevelRelative):
+        self.wellObjectList[wellNumber]['canvasObject'].setLiquidLevelRelative(liquidLevelRelative)
             		            
     def processIncoming(self):        
         while self.queue.qsize(  ):
             try:
                 msg = self.queue.get(0) 
                 self.PrintToConsole(msg)    
+                myGUI.setLiquidLevelRelative(0,float(msg))
                 # do something with msg 
             except queue.Empty:                
                 pass          
@@ -214,6 +227,71 @@ class MyGUI(tk.Frame):
             str = "Failed! " + self.programmer.m_sLastError
         self.PrintToConsole(str)                    
 	
+    
+class WellModel():
+    
+    def __init__(self,canvas,id,x,y,w=40,h=80,text=""):
+        self.canvas         = canvas
+        self.id             = id,
+        self.position_x     = x
+        self.position_y     = y
+        self.width          = w
+        self.height         = h
+        self.text           = text
+                     
+        # liquid
+        self.liquid = self.canvas.create_rectangle( 
+            self.position_x - self.width/2, 
+            self.position_y,   
+            self.position_x + self.width/2,
+            self.position_y - self.height,
+            outline     =   "#000",
+            width       =   0,
+            fill        =   "yellow",
+            tags        =   ("WELL","LIQUID",self.id)
+            )        
+         
+        # tube
+        self.tube = self.canvas.create_rectangle( 
+            self.position_x - self.width/2, 
+            self.position_y,   
+            self.position_x + self.width/2,
+            self.position_y - self.height,
+            outline     =   "#000",
+            width       =   4,
+            fill        =   "",
+            tags        =   ("WELL","TUBE",self.id)
+            )
+        self.tubecap = self.canvas.create_rectangle( 
+            self.position_x - self.width/2, 
+            self.position_y - self.height,   
+            self.position_x + self.width/2,
+            self.position_y - self.height,
+            outline     =   "white",
+            width       =   4,
+            fill        =   "",
+            tags        =   ("WELL","TUBECAP",self.id)
+            ) 
+                   
+        # tube label
+        self.tubelabel = self.canvas.create_text( 
+            self.position_x, 
+            self.position_y+10,   
+            text        =   self.text,
+            tags        =   ("WELL","TUBELABEL",self.id)
+            )
+            
+    def setLiquidLevelRelative(self,liquidLevelRelative=0.0):
+       self.canvas.coords(
+            self.liquid,
+            
+            self.position_x - self.width/2, 
+            self.position_y,   
+            self.position_x + self.width/2,
+            self.position_y - self.height*liquidLevelRelative
+            )
+    
+        
 #********************************************************************************
 
 #********************************************************************************
@@ -737,7 +815,7 @@ def CleanupAndShutDown():
     
 #********************************************************************************
 
-version = "171025a"
+version = "171103a"
 
 cypressProgrammer = CypressProgrammer(hexFileToProgram="C:\\IH_CapGauge02.hex") 
 #IH171023 for some reason this must reside in root
@@ -747,5 +825,6 @@ root = tk.Tk()
 client = ThreadedClient(root,cypressProgrammer)
 myGUI = client.gui
 myPrint("Liquid Level Gauge Demonstrator, Version %s"%version)
+
 root.mainloop()
 

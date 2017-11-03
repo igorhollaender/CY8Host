@@ -1,6 +1,8 @@
 #*******************************************************************************
 #
-#	C Y 8 H o s t . p y 
+#	C Y 8 H o s t . p y    
+#
+#  DEPRECATED !!! - use 	L i q u i d L e v e l G a u g e _  P C w i n a p p . p y  instead
 #
 #
 #	Last revision: 171024 IH
@@ -161,18 +163,23 @@ class MyGUI(tk.Frame):
             command     =   self.programmer.ReadData
             )                    
                                             
-        # canvas    
-        self.canvas = tk.Canvas(
-            )
-        self.canvas.pack(
-            fill        ='both',
-            expand      =   True
-            )            
+        # # canvas    
+        # self.canvas = tk.Canvas(
+            # )
+        # self.canvas.pack(
+            # fill        ='both',
+            # expand      =   True
+            # )            
             
-        #IH171024 for debugging only  
-        self.canvas.create_rectangle(30, 10, 120, 80, 
-            outline="#fb0", fill="#fb0")
+        # #IH171024 for debugging only  
+        # self.canvas.create_rectangle(30, 10, 120, 80, 
+            # outline="#fb0", fill="#fb0")
             
+        self.well1 =  WellModelWidget(self,"WELL 1")
+        self.well2 =  WellModelWidget(self,"WELL 2")
+        
+        self.well1.pack()
+        self.well2.pack()
 		            
     # callbacks     	
     def onExit(self):	
@@ -193,6 +200,36 @@ class MyGUI(tk.Frame):
             str = "Failed! " + self.programmer.m_sLastError
         self.PrintToConsole(str)                    
 	
+class WellModelWidget(tk.Frame):
+    
+    def __init__(self,parent,label):
+        tk.Frame.__init__(self,parent)
+        
+        self.label = tk.Label(
+            self,
+            text        =   label,
+            anchor      =   "w"
+            )
+        self.label.pack(
+            side        =   "top", 
+            fill        =   "x"
+            )
+        
+        # canvas    
+        self.canvas = tk.Canvas(
+            )
+        self.canvas.pack(
+            fill        =   'both',
+            expand      =   True
+            )            
+            
+        #IH171024 for debugging only  
+        self.canvas.create_rectangle(
+            30, 10, 120, 80, 
+            outline     =   "#f00", 
+            fill        =   "#ab0"
+            )
+        
 #********************************************************************************
 
 #********************************************************************************
