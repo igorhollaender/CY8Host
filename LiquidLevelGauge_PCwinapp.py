@@ -3,7 +3,7 @@
 #	L i q u i d L e v e l G a u g e _  P C w i n a p p . p y 
 #
 #
-#	Last revision: 171103 IH
+#	Last revision: 171106 IH
 #
 #*******************************************************************************
 # 	Adapted from Python_Ex.py included in Cypress distribution 
@@ -90,12 +90,13 @@ class MyGUI(tk.Frame):
 
 #  tutorial:  http://zetcode.com/gui/tkinter/menustoolbars/
 
-    def __init__(self,programmer,master,queue,endCommand):
+    def __init__(self,programmer,master,threadedClient):
         super().__init__()
         self.programmer     = programmer
         self.master         = master
-        self.queue          = queue
-        self.endCommand     = endCommand
+        self.queue          = threadedClient.queue
+        self.endCommand     = threadedClient.endApplication
+        self.threadedClient = threadedClient
         self.initUI()
         
     def initUI(self):
@@ -173,6 +174,14 @@ class MyGUI(tk.Frame):
             label       =   "Read 40 bytes", 
             command     =   DemoReadData
             )                    
+        dataMenu.add_command(
+            label       =   "Start Data Acquisition", 
+            command     =   self.StartDataAcquisition
+            )                                
+        dataMenu.add_command(
+            label       =   "Stop Data Acquisition", 
+            command     =   self.StopDataAcquisition            
+            )                                            
                          
         self.canvas = tk.Canvas(
             )
@@ -182,18 +191,26 @@ class MyGUI(tk.Frame):
             )            
         
         self.wellObjectList = []
-        for w in range(0,7):
+        for w in range(0,8):
             wellObject = {
                 'wellNumber'      : w,
                 'canvasObject'    : WellModel(
                     self.canvas,    
                     "WELL"+str(w),
                     50*w+100,200,
-                    text = str(w)
+                    text = str(w),
+                    w=50,
+                    h=100
                     ),
                 }
             self.wellObjectList.append(wellObject)
  
+    def StartDataAcquisition(self):       
+        self.programmer.I2C_CommunicationInit()
+        self.threadedClient.startWorkerThread1()
+        
+    def StopDataAcquisition(self):               
+        self.threadedClient.stopWorkerThread1()        
         
     def setLiquidLevelRelative(self,wellNumber,liquidLevelRelative):
         self.wellObjectList[wellNumber]['canvasObject'].setLiquidLevelRelative(liquidLevelRelative)
@@ -202,15 +219,24 @@ class MyGUI(tk.Frame):
         while self.queue.qsize(  ):
             try:
                 msg = self.queue.get(0) 
-                self.PrintToConsole(msg)    
-                myGUI.setLiquidLevelRelative(0,float(msg))
-                # do something with msg 
+                self.PrintToConsole(msg)                   
+                try:
+                    relativeValue = float(msg) # msg might be something else than just a float 
+                    if relativeValue<0.0:
+                        relativeValue = 0.0
+                    if relativeValue>1.0:
+                        relativeValue = 1.0                        
+                    myGUI.setLiquidLevelRelative(0,relativeValue) 
+                except:        
+                    pass                
+                
             except queue.Empty:                
                 pass          
                 
     # callbacks     	
     def onExit(self):	
-        self.quit()
+        self.StopDataAcquisition()       
+        CleanupAndShutDown()
         
     # miscellaneous
     def PrintToConsole(self,text):
@@ -247,31 +273,79 @@ class WellModel():
             self.position_y - self.height,
             outline     =   "#000",
             width       =   0,
-            fill        =   "yellow",
+            fill        =   "red",
             tags        =   ("WELL","LIQUID",self.id)
             )        
          
-        # tube
-        self.tube = self.canvas.create_rectangle( 
+        # # tube
+        # self.tube = self.canvas.create_rectangle( 
+            # self.position_x - self.width/2, 
+            # self.position_y,   
+            # self.position_x + self.width/2,
+            # self.position_y - self.height,
+            # outline     =   "#000",
+            # width       =   0,
+            # fill        =   "",
+            # tags        =   ("WELL","TUBE",self.id)
+            # )
+        # self.tubecap = self.canvas.create_rectangle( 
+            # self.position_x - self.width/2, 
+            # self.position_y - self.height,   
+            # self.position_x + self.width/2,
+            # self.position_y - self.height,
+            # outline     =   "white",
+            # width       =   4,
+            # fill        =   "",
+            # tags        =   ("WELL","TUBECAP",self.id)
+            # ) 
+            
+        # relative geometry of the well shape    
+        p1 = 0.90
+        p2 = 0.60
+        p3 = 0.20           
+        p4 = 0.00
+        p5 = 0.80
+        self.tubeconical = self.canvas.create_polygon( 
+            
+            # left side
+            self.position_x - self.width/2*p1, 
+            self.position_y - self.height,            
+            
+            self.position_x - self.width/2*p5, 
+            self.position_y - self.height*p2,   
+            
+            self.position_x - self.width/2*p3,
+            self.position_y - self.height*p4,
+            
+            # right side
+            self.position_x + self.width/2*p3,
+            self.position_y - self.height*p4,
+            
+            self.position_x + self.width/2*p5, 
+            self.position_y - self.height*p2,   
+            
+            self.position_x + self.width/2*p1, 
+            self.position_y - self.height,            
+            
+            # outer bounding box
+            self.position_x + self.width/2, 
+            self.position_y - self.height,            
+            
+            self.position_x + self.width/2, 
+            self.position_y,            
+            
             self.position_x - self.width/2, 
-            self.position_y,   
-            self.position_x + self.width/2,
-            self.position_y - self.height,
-            outline     =   "#000",
-            width       =   4,
-            fill        =   "",
-            tags        =   ("WELL","TUBE",self.id)
-            )
-        self.tubecap = self.canvas.create_rectangle( 
+            self.position_y,            
+            
             self.position_x - self.width/2, 
-            self.position_y - self.height,   
-            self.position_x + self.width/2,
-            self.position_y - self.height,
-            outline     =   "white",
-            width       =   4,
-            fill        =   "",
-            tags        =   ("WELL","TUBECAP",self.id)
-            ) 
+            self.position_y - self.height,            
+            
+            outline     =   "black",
+            width       =   0,
+            fill        =   "black",
+            smooth      =   0,
+            tags        =   ("WELL","TUBECONICAL",self.id)
+            )            
                    
         # tube label
         self.tubelabel = self.canvas.create_text( 
@@ -302,20 +376,23 @@ class ThreadedClient:
         self.master = master
         self.programmer = programmer
         
+        self.hasToDoPeriodicActivity1 = False
+        
         # Create the queue
         self.queue = queue.Queue(  )
 
         # Set up the GUI part
-        self.gui = MyGUI(programmer, master, self.queue, self.endApplication)
+        self.gui = MyGUI(programmer, master, self)
 
         # Set up the thread to do asynchronous I/O
         # More threads can also be created and used, if necessary
-        self.running = 1
-        self.thread1 = threading.Thread(target=self.workerThread1)
-        self.thread1.start(  )
+        self.mainThreadRunning = True
+        self.thread1Running = False     
+        self.hResult = None                            
 
         # Start the periodic call in the GUI to check if the queue contains
         # anything
+                
         self.periodicCall(  )
 
     def periodicCall(self):
@@ -323,27 +400,56 @@ class ThreadedClient:
         Check every 100 ms if there is something new in the queue.
         """
         self.gui.processIncoming(  )
-        if not self.running:            
+        if not self.mainThreadRunning:            
             CleanupAndShutDown()
-    
-        self.master.after(100, self.periodicCall)  # 100ms
-
+                    
+        if self.thread1Running:          
+            # we read here the raw counts of the sensor  
+            # CapSense_dsRam.snsList.button0[0].raw[0]  (uint16)            
+            self.hResult=self.programmer.ReadData(2)     # I2C reading must be done  here: in the main thread                                                        
+            
+        self.master.after(20, self.periodicCall)  # 100ms
+                            
+    def startWorkerThread1(self):    
+        self.thread1 = threading.Thread(target=self.workerThread1)    
+        self.thread1Running = True
+        self.thread1.start(  )            
+        
+    def stopWorkerThread1(self): 
+        self.thread1Running = False           
+        
     def workerThread1(self):
         """
         This is where we handle the asynchronous I/O. For example, it may be
         a 'select(  )'. One important thing to remember is that the thread has
         to yield control pretty regularly, by select or otherwise.
-        """
-        while self.running:
-            # To simulate asynchronous I/O, we create a random number at
-            # random intervals. Replace the following two lines with the real
-            # thing.                             
-            msg = rand.random()
-            time.sleep(0.3)            
-            self.queue.put(str(msg))
+        """        
+        while self.thread1Running:                                                              
+
+            msgString=""            
+            hResult=self.hResult    # I2C reading must be done in the main thread
+            if hResult:
+              if (not self.programmer.SUCCEEDED(hResult[0])):
+                    myPrint ("Read data failed")                                    
+                    self.queue.put("FAILED")
+                    msgString = "FAILED"  #IH171106 preliminary only                      
+              else:        
+                    # msgString = ""     
+                    # for i in range(0, len(hResult[1])):  
+                        # myPrint ("Read from address 0x%x  : 0x%x" %(i,hResult[1][i]))                    
+                    #    msgString += "VALIDDATA 0x%x:0x%x;" %(i,hResult[1][i])              
+                        
+                    # IH171106 to be finetuned    
+                    myPrint (str((hResult[1][1]*256 + hResult[1][0])))   
+                    msgString = str(   ((hResult[1][1]*256 + hResult[1][0])-13500)/2000 )   
+                    
+            time.sleep(0.3)                        
+            self.queue.put(msgString)
 
     def endApplication(self):
-        self.running = 0
+        self.mainThreadRunning = False
+        
+            
 #********************************************************************************
 
 
@@ -810,21 +916,27 @@ def DemoReadData():
             myPrint ("Read from address 0x%x  : 0x%x" %(i,hResult[1][i]))                    
         
 def CleanupAndShutDown():
+    global myGUI
+    global cypressProgrammer
     myGUI.quit()        
+    cypressProgrammer.ClosePort()
     sys.exit(1)
     
 #********************************************************************************
 
-version = "171103a"
+version = "171106a"
 
 cypressProgrammer = CypressProgrammer(hexFileToProgram="C:\\IH_CapGauge02.hex") 
 #IH171023 for some reason this must reside in root
 
 rand=random.Random()
+
 root = tk.Tk()
 client = ThreadedClient(root,cypressProgrammer)
 myGUI = client.gui
+
 myPrint("Liquid Level Gauge Demonstrator, Version %s"%version)
+
 
 root.mainloop()
 
