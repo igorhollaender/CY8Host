@@ -3,7 +3,7 @@
 #	L i q u i d L e v e l G a u g e _  P C w i n a p p . p y 
 #
 #
-#	Last revision: 171106 IH
+#	Last revision: 171107 IH
 #
 #*******************************************************************************
 # 	Adapted from Python_Ex.py included in Cypress distribution 
@@ -100,7 +100,7 @@ class MyGUI(tk.Frame):
         self.initUI()
         
     def initUI(self):
-        self.master.geometry("750x450")
+        self.master.geometry("550x450")
         self.master.title("Liquid Level Gauge Demonstrator")
         self.master.protocol("WM_DELETE_WINDOW",self.endCommand)
 		
@@ -131,23 +131,23 @@ class MyGUI(tk.Frame):
             )
             
 		# top menu		
-        menuBar = tk.Menu(
+        self.menuBar = tk.Menu(
             master      =   self.master
             )            
-        self.master.config(menu=menuBar)
+        self.master.config(menu=self.menuBar)
         
-        fileMenu = tk.Menu(menuBar)
+        fileMenu = tk.Menu(self.menuBar)
         fileMenu.add_command(
             label       =   "Exit", 
             command     =   self.endCommand
             )
-        menuBar.add_cascade(
+        self.menuBar.add_cascade(
             label       =   "File", 
             menu        =   fileMenu
             )
             
-        programmerMenu = tk.Menu(menuBar)        
-        menuBar.add_cascade(
+        programmerMenu = tk.Menu(self.menuBar)        
+        self.menuBar.add_cascade(
             label       =   "Programmer", 
             menu        =   programmerMenu
             )                           
@@ -160,27 +160,20 @@ class MyGUI(tk.Frame):
             command     =   self.programmer.CyclePower
             )                    
             
-        dataMenu = tk.Menu(menuBar)        
-        menuBar.add_cascade(
-            label       =   "Data", 
-            menu        =   dataMenu
-            )        
-            
-        dataMenu.add_command(
-            label       =   "Initialize I2C", 
-            command     =   self.programmer.I2C_CommunicationInit
-            )                                                    
-        dataMenu.add_command(
-            label       =   "Read 40 bytes", 
-            command     =   DemoReadData
-            )                    
-        dataMenu.add_command(
-            label       =   "Start Data Acquisition", 
-            command     =   self.StartDataAcquisition
+        self.dataAcquisitionMenu = tk.Menu(self.menuBar)        
+        self.menuBar.add_cascade(
+            label       =   "Data Acquisition", 
+            menu        =   self.dataAcquisitionMenu
+            )                                   
+        self.dataAcquisitionMenu.add_command(
+            label       =   "Start", 
+            command     =   self.StartDataAcquisition,
+            state       =   'normal'
             )                                
-        dataMenu.add_command(
-            label       =   "Stop Data Acquisition", 
-            command     =   self.StopDataAcquisition            
+        self.dataAcquisitionMenu.add_command(
+            label       =   "Stop", 
+            command     =   self.StopDataAcquisition,            
+            state       =   'disabled'
             )                                            
                          
         self.canvas = tk.Canvas(
@@ -204,12 +197,17 @@ class MyGUI(tk.Frame):
                     ),
                 }
             self.wellObjectList.append(wellObject)
+            wellObject['canvasObject'].setLiquidLevelRelative(0.0)
  
     def StartDataAcquisition(self):       
+        self.dataAcquisitionMenu.entryconfig("Start",state='disabled')
+        self.dataAcquisitionMenu.entryconfig("Stop",state='normal')
         self.programmer.I2C_CommunicationInit()
         self.threadedClient.startWorkerThread1()
         
-    def StopDataAcquisition(self):               
+    def StopDataAcquisition(self):                
+        self.dataAcquisitionMenu.entryconfig("Start",state='normal')
+        self.dataAcquisitionMenu.entryconfig("Stop",state='disabled')
         self.threadedClient.stopWorkerThread1()        
         
     def setLiquidLevelRelative(self,wellNumber,liquidLevelRelative):
@@ -219,7 +217,7 @@ class MyGUI(tk.Frame):
         while self.queue.qsize(  ):
             try:
                 msg = self.queue.get(0) 
-                self.PrintToConsole(msg)                   
+                # self.PrintToConsole(msg)                   
                 try:
                     relativeValue = float(msg) # msg might be something else than just a float 
                     if relativeValue<0.0:
@@ -227,7 +225,8 @@ class MyGUI(tk.Frame):
                     if relativeValue>1.0:
                         relativeValue = 1.0                        
                     myGUI.setLiquidLevelRelative(0,relativeValue) 
-                except:        
+                except:   
+                    # resolve here all special msg types                 
                     pass                
                 
             except queue.Empty:                
@@ -397,18 +396,19 @@ class ThreadedClient:
 
     def periodicCall(self):
         """
-        Check every 100 ms if there is something new in the queue.
+        Check every 20 ms if there is something new in the queue.
         """
         self.gui.processIncoming(  )
         if not self.mainThreadRunning:            
             CleanupAndShutDown()
                     
         if self.thread1Running:          
-            # we read here the raw counts of the sensor  
-            # CapSense_dsRam.snsList.button0[0].raw[0]  (uint16)            
-            self.hResult=self.programmer.ReadData(2)     # I2C reading must be done  here: in the main thread                                                        
+            # we read here the raw counts of the sensor              
+            # CapSense_dsRam.snsList.button0[0].raw[0]   (uint16)   
+            # CapSense_dsRam.snsList.button0[0].bsln[0]  (uint16)            
+            self.hResult=self.programmer.ReadData(4)     # I2C reading must be done here (in the main thread)                                                      
             
-        self.master.after(20, self.periodicCall)  # 100ms
+        self.master.after(20, self.periodicCall)  # 20ms
                             
     def startWorkerThread1(self):    
         self.thread1 = threading.Thread(target=self.workerThread1)    
@@ -433,20 +433,21 @@ class ThreadedClient:
                     myPrint ("Read data failed")                                    
                     self.queue.put("FAILED")
                     msgString = "FAILED"  #IH171106 preliminary only                      
-              else:        
-                    # msgString = ""     
-                    # for i in range(0, len(hResult[1])):  
-                        # myPrint ("Read from address 0x%x  : 0x%x" %(i,hResult[1][i]))                    
-                    #    msgString += "VALIDDATA 0x%x:0x%x;" %(i,hResult[1][i])              
-                        
-                    # IH171106 to be finetuned    
-                    myPrint (str((hResult[1][1]*256 + hResult[1][0])))   
-                    msgString = str(   ((hResult[1][1]*256 + hResult[1][0])-13500)/2000 )   
+              else:                                                   
+                    # myPrint (  "  Baseline : " + str(hResult[1][3]*256 + hResult[1][2])
+                    #         + "  Rawcount : " + str(hResult[1][1]*256 + hResult[1][0])
+                    #         )                       
                     
-            time.sleep(0.3)                        
+                    # IH171106 to be finetuned                                 
+                    liquidLevelRelative =(hResult[1][1]*256+hResult[1][0]-hResult[1][3]*256-hResult[1][2])/1500
+                    
+                    msgString = str(liquidLevelRelative)   
+                    
+            time.sleep(0.05)                        
             self.queue.put(msgString)
 
     def endApplication(self):
+        self.stopWorkerThread1()
         self.mainThreadRunning = False
         
             
@@ -832,10 +833,20 @@ class CypressProgrammer:
         
     def CyclePower(self):
         myPrint ("power off")                    
-        self.pp.PowerOff()
-        time.sleep(0.5) 
-        self.pp.PowerOn()
+        hResult=self.pp.PowerOff()
+        hr = hResult[0]
+        self.m_sLastError = hResult[1]
+        if (not self.SUCCEEDED(hr)):
+            myPrint (self.m_sLastError)                               
+        time.sleep(2.0) 
         myPrint ("power on")                    
+        hResult=self.pp.PowerOn()
+        hr = hResult[0]
+        self.m_sLastError = hResult[1]
+        if (not self.SUCCEEDED(hr)):
+            myPrint (self.m_sLastError)                                           
+            return hr
+        
         
     def I2C_CommunicationInit(self):
         hr = self.ClosePort()  # IH171025 for some reason, it does not work without this
@@ -906,15 +917,7 @@ def dec2hex(n):
 def myPrint(text):
    global myGUI
    myGUI.PrintToConsole(text) 
-      
-def DemoReadData():
-    hResult=cypressProgrammer.ReadData(48)
-    if (not cypressProgrammer.SUCCEEDED(hResult[0])):
-            myPrint ("Read data failed")                    
-            return
-    for i in range(0, len(hResult[1])):  
-            myPrint ("Read from address 0x%x  : 0x%x" %(i,hResult[1][i]))                    
-        
+              
 def CleanupAndShutDown():
     global myGUI
     global cypressProgrammer
@@ -924,9 +927,9 @@ def CleanupAndShutDown():
     
 #********************************************************************************
 
-version = "171106a"
+version = "171107a"
 
-cypressProgrammer = CypressProgrammer(hexFileToProgram="C:\\IH_CapGauge02.hex") 
+cypressProgrammer = CypressProgrammer(hexFileToProgram="C:\\IH_CapGauge02_171107a.hex") 
 #IH171023 for some reason this must reside in root
 
 rand=random.Random()
